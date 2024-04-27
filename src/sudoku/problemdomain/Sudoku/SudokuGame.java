@@ -3,17 +3,19 @@ package sudoku.problemdomain.Sudoku;
 import sudoku.problemdomain.Menu.MainMenu;
 import sudoku.problemdomain.constants.GameState;
 import sudoku.problemdomain.constants.Mode;
-import sudoku.problemdomain.constants.SaveDirectories;
 
 import javax.swing.*;
 import javax.swing.text.NumberFormatter;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.io.*;
+import java.awt.event.WindowAdapter;
+import java.io.File;
+import java.io.Serializable;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.Random;
+import java.awt.event.WindowEvent;
 
 import static sudoku.problemdomain.Sudoku.SudokuUtils.*;
 import static sudoku.problemdomain.constants.Fonts.SUDOKU_CLUES_FONT;
@@ -63,6 +65,13 @@ public class SudokuGame extends JPanel implements Serializable {
         this.parent = parent;
         this.setPreferredSize(SUDOKU_SCREEN_SIZE);
         this.setLayout(null);
+        parent.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                saveIntoPending("Pending.txt",sudokuSquares);
+            }
+        });
+
         try {
             if (sudokuSquares == null || sudokuSquares[0] == null)
                 generateSudokuSquares();
