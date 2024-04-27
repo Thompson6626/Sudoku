@@ -1,21 +1,42 @@
 package sudoku.problemdomain.Sudoku;
 
-public class Sudoku {
+import java.io.Serializable;
+import java.util.*;
+
+public class Sudoku implements Serializable {
     int[][] mat;
     int N; // number of columns/rows.
     int SRN; // square root of N
     int K; // No. Of missing digits
+    Random random;
 
     // Constructor
     Sudoku(int N, int clues) {
         this.N = N;
         this.K = (N * N) - clues;
-
+        random = new Random();
         // Compute square root of N
         double SRNd = Math.sqrt(N);
         SRN = (int) SRNd;
 
         mat = new int[N][N];
+        fillValues();
+        deleteRandomFromLastColumn();
+    }
+
+    private void deleteRandomFromLastColumn() {
+        List<Integer> toDelete = new ArrayList<>(N);
+
+        int amount = random.nextInt(N + 1);
+
+        while (amount > 0){
+            int randomRow = random.nextInt(N);
+            if (!toDelete.contains(randomRow)){
+                mat[randomRow][N - 1] = 0;
+                toDelete.add(randomRow);
+                amount--;
+            }
+        }
     }
 
     // Sudoku Generator
@@ -53,9 +74,8 @@ public class Sudoku {
         }
     }
 
-    // Random generator
     int randomGenerator(int num) {
-        return (int) Math.floor((Math.random() * num + 1));
+        return random.nextInt(num) + 1;
     }
 
     boolean CheckIfSafe(int i, int j, int num) {

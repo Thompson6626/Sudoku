@@ -1,25 +1,27 @@
 package sudoku.problemdomain.Sudoku;
 
 import sudoku.problemdomain.Menu.MainMenu;
-import sudoku.problemdomain.Menu.MainMenuPanel;
 import sudoku.problemdomain.constants.GameState;
+import sudoku.problemdomain.constants.Mode;
+import sudoku.problemdomain.constants.SaveDirectories;
 
 import javax.swing.*;
-import javax.swing.text.*;
+import javax.swing.text.NumberFormatter;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
-import java.io.Serializable;
+import java.io.*;
 import java.text.NumberFormat;
 import java.text.ParseException;
-import java.util.*;
-import java.util.List;
-import java.util.stream.IntStream;
+import java.util.Random;
 
 import static sudoku.problemdomain.Sudoku.SudokuUtils.*;
+import static sudoku.problemdomain.constants.Fonts.SUDOKU_CLUES_FONT;
+import static sudoku.problemdomain.constants.Fonts.SUDOKU_FONT;
 import static sudoku.problemdomain.constants.GameState.ACTIVE;
 import static sudoku.problemdomain.constants.GameState.COMPLETED;
 import static sudoku.problemdomain.constants.Messages.*;
+import static sudoku.problemdomain.constants.SaveDirectories.PENDING_GAME_PATH;
 
 public class SudokuGame extends JPanel implements Serializable {
 
@@ -27,30 +29,49 @@ public class SudokuGame extends JPanel implements Serializable {
     private static CustomBorderTextField[][] sudokuSquares;
     private static final int SUDOKU_SQUARE_SIZE = 50;
     private static final int SUDOKU_GAME_SCREEN_SIZE = SUDOKU_SQUARE_SIZE * 9;
-    private static final Font SUDOKU_FONT = new Font("Work Sans",Font.PLAIN,25);
-    private static final Font SUDOKU_CLUES_FONT = new Font("Work Sans",Font.BOLD,30);
+
     private static final Dimension SUDOKU_SCREEN_SIZE = new Dimension(
             SUDOKU_GAME_SCREEN_SIZE,
             SUDOKU_GAME_SCREEN_SIZE
     );
-    private final Map<Long,int[][]> sudokus = new HashMap<>();
-    private long currentBaseSudoku;
+    private static final File PENDING_GAME = new File(PENDING_GAME_PATH);
     public static final int GRID_BOUNDARY = 9;
     JMenuBar jMenuBar;
     JFrame parent;
-
-    public SudokuGame(JFrame parent) {
+    private static final NumberFormat INT_FORMAT;
+    static {
+        INT_FORMAT = NumberFormat.getIntegerInstance();
+        INT_FORMAT.setGroupingUsed(false);
+    }
+    private static final NumberFormatter NUMBER_FORMATTER;
+    static{
+        NUMBER_FORMATTER = new NumberFormatter(INT_FORMAT){
+            @Override
+            public Object stringToValue(String text) throws ParseException {
+                if (text.length() == 0)
+                    return null;
+                return super.stringToValue(text);
+            }
+        };
+        NUMBER_FORMATTER.setValueClass(Integer.class);
+        NUMBER_FORMATTER.setAllowsInvalid(false);
+        NUMBER_FORMATTER.setMinimum(1);
+        NUMBER_FORMATTER.setMaximum(9);
+    }
+    public SudokuGame(JFrame parent, Mode mode) {
+        gameState = ACTIVE;
         this.parent = parent;
         this.setPreferredSize(SUDOKU_SCREEN_SIZE);
         this.setLayout(null);
-
         try {
-            if(sudokuSquares == null){
-                sudokuSquares = new CustomBorderTextField[GRID_BOUNDARY][GRID_BOUNDARY];
+            if (sudokuSquares == null || sudokuSquares[0] == null)
                 generateSudokuSquares();
+
+
+            if(mode == Mode.NEW_GAME){
                 generateRandomSudoku();
-            }else{
-                displayUnfinishedSudoku();
+            }else if(mode == Mode.CONTINUE){
+                displayPendingSudoku(sudokuSquares,PENDING_GAME);
             }
         } catch (ParseException e) {
             throw new RuntimeException(e);
@@ -65,31 +86,35 @@ public class SudokuGame extends JPanel implements Serializable {
 
         reset.addActionListener(e -> {
             if (gameState == ACTIVE){
-                showConfirmationDialog(RESET_WARNING, this::resetCurrentSudoku);
+                showConfirmationDialog(RESET_WARNING, () -> {
+                    resetCurrentSudoku(sudokuSquares);
+                    deletePendingGame();
+                });
             }else {
-                resetCurrentSudoku();
+                resetCurrentSudoku(sudokuSquares);
+                deletePendingGame();
             }
         });
 
         change.addActionListener(e -> {
-            if (gameState == ACTIVE){
+            if (gameState == ACTIVE)
                 showConfirmationDialog(NEW_GAME_WARNING, this::generateRandomSudoku);
-            }else {
+            else
                 generateRandomSudoku();
-            }
         });
 
         exit.addActionListener(e -> {
             if(gameState == ACTIVE){
                 showConfirmationDialog(EXIT_WARNING, () -> {
                     parent.dispose();
-                    MainMenuPanel.setOnGoingGame(sudokuSquares);
+                    saveIntoPending("Pending.txt",sudokuSquares);
+                    sudokuSquares = null;
                     SwingUtilities.invokeLater(MainMenu::new);
                 });
             }else {
                 parent.dispose();
+                deletePendingGame();
                 sudokuSquares = null;
-                MainMenuPanel.setOnGoingGame(sudokuSquares);
                 SwingUtilities.invokeLater(MainMenu::new);
             }
         });
@@ -104,6 +129,7 @@ public class SudokuGame extends JPanel implements Serializable {
         parent.setJMenuBar(jMenuBar);
 
     }
+
     private void showConfirmationDialog(String message, Runnable actionOnConfirmation) {
         int option = JOptionPane.showOptionDialog(parent,
                 message,
@@ -112,49 +138,13 @@ public class SudokuGame extends JPanel implements Serializable {
                 JOptionPane.INFORMATION_MESSAGE,
                 null,
                 new String[]{"Yes", "No"},
-                null);
+                "No");
         if (option == JOptionPane.YES_OPTION) {
             actionOnConfirmation.run();
         }
     }
 
-
-    private void displayUnfinishedSudoku() {
-        for (CustomBorderTextField[] sudokuSquare : sudokuSquares) {
-            for (CustomBorderTextField textField : sudokuSquare){
-                this.add(textField);
-            }
-        }
-    }
-
-    private void resetCurrentSudoku() {
-        for (CustomBorderTextField[] arr:sudokuSquares){
-            for (CustomBorderTextField textField:arr){
-                if (textField.isEditable())
-                    textField.setText("");
-            }
-        }
-    }
-
-
-
-
     private void generateSudokuSquares() throws ParseException {
-        NumberFormat intFormat = NumberFormat.getIntegerInstance();
-        intFormat.setGroupingUsed(false);
-        NumberFormatter numberFormatter = new NumberFormatter(intFormat){
-            @Override
-            public Object stringToValue(String text) throws ParseException {
-                if (text.length() == 0)
-                    return null;
-                return super.stringToValue(text);
-            }
-        };
-        numberFormatter.setValueClass(Integer.class);
-        numberFormatter.setAllowsInvalid(false);
-        numberFormatter.setMinimum(1);
-        numberFormatter.setMaximum(9);
-
         sudokuSquares = new CustomBorderTextField[GRID_BOUNDARY][GRID_BOUNDARY];
         final int squareWidth = 50;
         final int squareHeight = 50;
@@ -165,8 +155,8 @@ public class SudokuGame extends JPanel implements Serializable {
                         Color.gray, // Top
                         Color.gray, // Bottom
                         Color.gray, // Left
-                        Color.gray,
-                        numberFormatter// Right
+                        Color.gray, // Right
+                        NUMBER_FORMATTER
                 );
                 textField.setColumns(1);
                 textField.setVisible(true);
@@ -181,7 +171,7 @@ public class SudokuGame extends JPanel implements Serializable {
                 textField.setHorizontalAlignment(JTextField.CENTER);
 
                 sudokuSquares[i][j] = textField;
-                this.add(sudokuSquares[i][j]);
+                this.add(textField);
             }
         }
 
@@ -191,6 +181,7 @@ public class SudokuGame extends JPanel implements Serializable {
 
 
     private void generateRandomSudoku(){
+        deletePendingGame();
         int clues = 17 + new Random().nextInt(14);
 
         for (CustomBorderTextField[] arr:sudokuSquares){
@@ -204,7 +195,6 @@ public class SudokuGame extends JPanel implements Serializable {
         gameState = ACTIVE;
 
         Sudoku sudoku = new Sudoku(GRID_BOUNDARY,clues);
-        sudoku.fillValues();
 
         int[][] mat = sudoku.mat;
         for (int i = 0; i < GRID_BOUNDARY; i++) {
@@ -216,9 +206,6 @@ public class SudokuGame extends JPanel implements Serializable {
                 }
             }
         }
-        // [row,col,number]
-        currentBaseSudoku = getHashCode(sudokuSquares);
-        sudokus.put(currentBaseSudoku,mat);
     }
 
     private void gameCompleted(){
@@ -242,12 +229,10 @@ public class SudokuGame extends JPanel implements Serializable {
             }
         }
     }
-
-    public static CustomBorderTextField[][] getSudokuSquares() {
-        return sudokuSquares;
+    public static File getPendingGame(){
+        return PENDING_GAME;
     }
-
-    public static void setSudokuSquares(CustomBorderTextField[][] sudokuSquares) {
-        SudokuGame.sudokuSquares = sudokuSquares;
+    public static void deletePendingGame(){
+        PENDING_GAME.delete();
     }
 }
