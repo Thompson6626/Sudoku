@@ -7,4 +7,6 @@ This project implements a classic Sudoku game using Java Swing and JTextFields. 
 * Traditional 9x9 Sudoku grid with JTextFields for user input
 * Input validation to ensure numbers between 1 and 9 are entered
 * Game state saving and loading functionality
+
+
 ![Preview](SudokuPreview.png)
